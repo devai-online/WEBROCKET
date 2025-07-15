@@ -268,23 +268,23 @@ HTML_TEMPLATE = """
                                 <option value="casual">Casual</option>
                                 <option value="professional">Professional</option>
                                 <option value="engaging">Engaging</option>
+                                <option value="factual">Factual</option>
                             </select>
                         </div>
-                        
                         <div class="form-group">
-                            <label for="maxLength">Max Length (words):</label>
+                            <label for="maxLength">Word Count:</label>
                             <select id="maxLength" name="maxLength">
-                                <option value="400">400 words</option>
-                                <option value="600">600 words</option>
+                                <option value="300">300 words</option>
+                                <option value="500">500 words</option>
                                 <option value="800" selected>800 words</option>
                                 <option value="1000">1000 words</option>
                                 <option value="1200">1200 words</option>
+                                <option value="1500">1500 words</option>
                             </select>
                         </div>
-                        
                         <div class="form-group">
                             <div class="checkbox-group">
-                                <input type="checkbox" id="postProcess" name="postProcess" checked>
+                                <input type="checkbox" id="postProcess" name="postProcess">
                                 <label for="postProcess">Apply humanization</label>
                             </div>
                         </div>

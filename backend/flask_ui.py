@@ -272,17 +272,6 @@ HTML_TEMPLATE = """
                         </div>
                         
                         <div class="form-group">
-                            <label for="maxLength">Max Length (words):</label>
-                            <select id="maxLength" name="maxLength">
-                                <option value="400">400 words</option>
-                                <option value="600">600 words</option>
-                                <option value="800" selected>800 words</option>
-                                <option value="1000">1000 words</option>
-                                <option value="1200">1200 words</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
                             <div class="checkbox-group">
                                 <input type="checkbox" id="postProcess" name="postProcess" checked>
                                 <label for="postProcess">Apply humanization</label>
@@ -328,7 +317,6 @@ HTML_TEMPLATE = """
             const formData = new FormData(this);
             const topic = formData.get('topic').trim();
             const style = formData.get('style');
-            const maxLength = parseInt(formData.get('maxLength'));
             const postProcess = formData.get('postProcess') === 'on';
             
             if (!topic) {
@@ -349,7 +337,6 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({
                         topic: topic,
                         style: style,
-                        maxLength: maxLength,
                         postProcess: postProcess
                     })
                 });
@@ -417,7 +404,6 @@ def generate_blog():
         backend_request = {
             "prompt": data.get('topic'),
             "style": data.get('style', 'informative'),
-            "max_length": data.get('maxLength', 800),
             "post_process": data.get('postProcess', True),
             "processing_intensity": "heavy"
         }

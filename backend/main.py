@@ -5,13 +5,12 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 from dotenv import load_dotenv
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+print("GROQ_API_KEY loaded:", os.getenv("GROQ_API_KEY"))
 from services.groq_service import groq_service
 from services.balanced_processor import balanced_processor
 from services.humanizer_service import humanizer
 from config import config
-
-# Load environment variables
-load_dotenv()
 
 # Validate required configuration
 try:
@@ -103,12 +102,14 @@ async def generate_blog(request: BlogRequest):
         )
     
     try:
+        print(f"🔍 Starting blog generation for prompt: {request.prompt[:50]}...")
         # Generate blog content using Groq service
         result = groq_service.generate_blog_content(
             prompt=request.prompt,
             max_length=request.max_length,
             style=request.style
         )
+        print(f"✅ Blog generation result: {result.get('success', False)}")
         
         if not result["success"]:
             raise HTTPException(
@@ -141,6 +142,9 @@ async def generate_blog(request: BlogRequest):
         )
         
     except Exception as e:
+        print(f"❌ Error in blog generation: {str(e)}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @app.get("/styles")
@@ -151,7 +155,8 @@ async def get_available_styles():
             {"name": "informative", "description": "Clear, educational tone with facts and examples"},
             {"name": "casual", "description": "Friendly, conversational tone with simple language"},
             {"name": "professional", "description": "Formal, business-appropriate tone"},
-            {"name": "engaging", "description": "Storytelling tone with hooks and compelling narratives"}
+            {"name": "engaging", "description": "Storytelling tone with hooks and compelling narratives"},
+            {"name": "factual", "description": "Objective, encyclopedia-style tone with factual information"}
         ]
     }
 
@@ -904,23 +909,23 @@ async def blog_generator_ui():
                                 <option value="casual">Casual</option>
                                 <option value="professional">Professional</option>
                                 <option value="engaging">Engaging</option>
+                                <option value="factual">Factual</option>
                             </select>
                         </div>
-                        
                         <div class="form-group">
-                            <label for="maxLength">Max Length (words):</label>
+                            <label for="maxLength">Word Count:</label>
                             <select id="maxLength">
-                                <option value="400">400 words</option>
-                                <option value="600">600 words</option>
+                                <option value="300">300 words</option>
+                                <option value="500">500 words</option>
                                 <option value="800" selected>800 words</option>
                                 <option value="1000">1000 words</option>
                                 <option value="1200">1200 words</option>
+                                <option value="1500">1500 words</option>
                             </select>
                         </div>
-                        
                         <div class="form-group">
                             <div class="checkbox-group">
-                                <input type="checkbox" id="postProcess" checked>
+                                <input type="checkbox" id="postProcess">
                                 <label for="postProcess">Apply humanization</label>
                             </div>
                         </div>
@@ -1038,4 +1043,4 @@ async def blog_generator_ui():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001) 
+uvicorn.run(app, host="0.0.0.0", port=8000) 

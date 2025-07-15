@@ -49,7 +49,7 @@ class GroqService:
             system_prompt = self._create_system_prompt(style, max_length)
             
             # Create the user prompt
-            user_prompt = self._create_user_prompt(prompt, max_length)
+            user_prompt = self._create_user_prompt(prompt, max_length, style)
             
             # Generate content using Groq with higher randomness for human-like output
             response = self.client.chat.completions.create(
@@ -69,30 +69,43 @@ class GroqService:
             # Extract the generated content
             content = response.choices[0].message.content.strip()
             
-            # Apply comprehensive humanization
-            try:
-                from .humanizer_service import humanizer
-                humanization_result = humanizer.humanize_text(
-                    content, 
-                    intensity="heavy", 
-                    use_groq=True if config.GROQ_API_KEY else False
-                )
-                
-                if humanization_result['success']:
-                    content = humanization_result['humanized']
-                    print(f"✅ Humanization applied: {len(humanization_result['changes_made'])} changes made")
-                else:
-                    print(f"⚠️ Humanization failed: {humanization_result.get('error', 'Unknown error')}")
+            # Remove meta-response lines (like "I'm not going to follow the given instructions...")
+            content = self._remove_meta_responses(content)
+            
+            # Apply comprehensive humanization (skip for factual and professional styles to maintain objectivity)
+            if style not in ["factual", "professional"]:
+                try:
+                    from .humanizer_service import humanizer
+                    humanization_result = humanizer.humanize_text(
+                        content, 
+                        intensity="heavy", 
+                        use_groq=True if config.GROQ_API_KEY else False
+                    )
+                    
+                    if humanization_result['success']:
+                        content = humanization_result['humanized']
+                        print(f"✅ Humanization applied: {len(humanization_result['changes_made'])} changes made")
+                    else:
+                        print(f"⚠️ Humanization failed: {humanization_result.get('error', 'Unknown error')}")
+                        # Fall back to simple humanization
+                        content = self._humanize_content(content)
+                        
+                except Exception as e:
+                    print(f"⚠️ Advanced humanization failed: {e}")
                     # Fall back to simple humanization
                     content = self._humanize_content(content)
-                    
-            except Exception as e:
-                print(f"⚠️ Advanced humanization failed: {e}")
-                # Fall back to simple humanization
-                content = self._humanize_content(content)
+            else:
+                print(f"✅ Skipping humanization for {style} style to maintain objectivity")
             
-            # Calculate word count
-            word_count = len(content.split())
+            # Calculate word count and trim to exact length if needed
+            words = content.split()
+            word_count = len(words)
+            
+            # If content is longer than requested, trim it to exact word count
+            if max_length and word_count > max_length:
+                content = ' '.join(words[:max_length])
+                word_count = max_length
+                print(f"✅ Content trimmed to exact {max_length} words")
             
             return {
                 "content": content,
@@ -116,13 +129,44 @@ class GroqService:
         style_instructions = {
             "informative": "Write in a clear, educational tone. Use facts and examples to support your points.",
             "casual": "Write in a friendly, conversational tone. Use simple language and relatable examples.",
-            "professional": "Write in a formal, business-appropriate tone. Use industry terminology when appropriate.",
-            "engaging": "Write in an engaging, storytelling tone. Use hooks and compelling narratives."
+            "professional": "Write in a formal, business-appropriate tone. Use industry terminology when appropriate. Present information objectively without personal opinions or conversational language.",
+            "engaging": "Write in an engaging, storytelling tone. Use hooks and compelling narratives.",
+            "factual": "Write in an objective, encyclopedia-style tone. Present information clearly and factually without personal opinions or conversational language."
         }
         
         style_instruction = style_instructions.get(style, style_instructions["informative"])
         
-        return f"""You are a human blogger with years of experience writing authentic, personal content. Write naturally as if you're sharing your thoughts with a friend.
+        if style in ["factual", "professional"]:
+            return f"""You are a professional content writer. Write a SINGLE, cohesive article in a formal, objective tone.
+
+CRITICAL REQUIREMENTS:
+- Write ONLY ONE version of the content
+- Use third-person perspective throughout
+- Avoid ALL personal pronouns (I, you, we, my, our)
+- Do NOT include phrases like "I think", "In my opinion", "I believe"
+- Do NOT provide multiple versions or alternatives
+- Do NOT explain your writing process or choices
+- Write in paragraph format, not bullet points
+- Target exactly {max_length} words
+- Use formal, business-appropriate language
+
+CONTENT STRUCTURE:
+- Start directly with the main content
+- Use clear headings and subheadings
+- Write in flowing paragraphs
+- Include relevant facts, statistics, and examples
+- Maintain professional, authoritative tone
+
+AVOID COMPLETELY:
+- Personal opinions or subjective language
+- Conversational phrases or contractions
+- Meta-commentary about writing style
+- Multiple versions or alternatives
+- Bullet point lists (use paragraphs instead)
+
+Write a single, professional article suitable for business or educational publication."""
+        else:
+            return f"""You are a human blogger with years of experience writing authentic, personal content. Write naturally as if you're sharing your thoughts with a friend.
 
 CRITICAL HUMAN-LIKE WRITING REQUIREMENTS:
 1. Write in a {style} style: {style_instruction}
@@ -154,10 +198,27 @@ AVOID AI-LIKE PATTERNS:
 
 Write as if you're genuinely passionate about this topic and sharing your personal insights."""
     
-    def _create_user_prompt(self, prompt: str, max_length: int) -> str:
+    def _create_user_prompt(self, prompt: str, max_length: int, style: str = "informative") -> str:
         """Create the user prompt for blog generation"""
         
-        return f"""Hey, I want you to write a blog post about: {prompt}
+        if style in ["factual", "professional"]:
+            return f"""Write a professional article about: {prompt}
+
+CRITICAL INSTRUCTIONS:
+- Write ONE single article only
+- Use formal, business-appropriate language
+- Write in paragraph format (not bullet points)
+- Use third-person perspective throughout
+- Avoid all personal pronouns and opinions
+- Target exactly {max_length} words
+- Start directly with the content (no meta-commentary)
+- Include relevant facts, statistics, and examples
+
+Topic: {prompt}
+
+Create a single, professional article suitable for business publication."""
+        else:
+            return f"""Hey, I want you to write a blog post about: {prompt}
 
 Write this like you're a real person who's genuinely interested in this topic. Make it about {max_length} words, but don't worry if it's a bit more or less - that's natural!
 
@@ -250,6 +311,42 @@ Write away!"""
         content = '. '.join(sentences)
         
         return content
+    
+    def _remove_meta_responses(self, text: str) -> str:
+        """Remove meta-response lines from the generated content"""
+        import re
+        
+        # Patterns for common meta-responses
+        meta_patterns = [
+            r"^I'm not going to follow.*system's instructions\.",
+            r"^As an AI language model,.*",
+            r"^Sorry, I can't.*",
+            r"^I am an AI developed by.*",
+            r"^As requested,.*",
+            r"^I understand you want.*",
+            r"^Let me provide.*",
+            r"^Here's.*",
+            r"^I'm happy to write about.*",
+            r"^I want to clarify that.*",
+            r"^To ensure I meet the requirements.*",
+            r"^I will provide.*",
+            r"^Version \d+.*",
+            r"^Professional Style.*",
+            r"^Conversational Tone.*",
+            r"^But I want to clarify.*",
+            r"^To ensure I meet.*",
+        ]
+        
+        lines = text.splitlines()
+        filtered_lines = []
+        
+        for line in lines:
+            # Skip lines that match meta-response patterns
+            if any(re.match(pattern, line.strip(), re.IGNORECASE) for pattern in meta_patterns):
+                continue
+            filtered_lines.append(line)
+        
+        return '\n'.join(filtered_lines).strip()
 
 # Create a global instance of the service
 groq_service = GroqService() 
